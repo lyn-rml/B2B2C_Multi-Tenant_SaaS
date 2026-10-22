@@ -1,0 +1,375 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Student Marketplace API",
+    "version": "v2",
+    "description": "Implemented endpoints only. Base URL: http://localhost:8080"
+  },
+  "servers": [{ "url": "http://localhost:8080", "description": "Local dev" }],
+  "paths": {
+
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check",
+        "operationId": "health",
+        "security": [],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }
+        }
+      }
+    },
+
+    "/api/auth/register": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Register a new user (password-based, dev convenience)",
+        "operationId": "register",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "JWT + roles", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } }
+        }
+      }
+    },
+
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Login with email and password",
+        "operationId": "login",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "JWT + roles", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } }
+        }
+      }
+    },
+
+    "/api/auth/otp/request": {
+      "post": {
+        "tags": ["Authentication — OTP"],
+        "summary": "Request a one-time login code by email (check Mailpit at :8025)",
+        "operationId": "otpRequest",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OtpRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Code sent (no body)" }
+        }
+      }
+    },
+
+    "/api/auth/otp/verify": {
+      "post": {
+        "tags": ["Authentication — OTP"],
+        "summary": "Verify email OTP and receive JWT",
+        "operationId": "otpVerify",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OtpVerifyRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "JWT + roles", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } }
+        }
+      }
+    },
+
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Current user profile and roles",
+        "operationId": "me",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } }
+        }
+      }
+    },
+
+    "/api/student/dashboard": {
+      "get": {
+        "tags": ["Role dashboards"],
+        "summary": "Student dashboard data",
+        "operationId": "studentDashboard",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DashboardDto" } } } }
+        }
+      }
+    },
+
+    "/api/employee/dashboard": {
+      "get": {
+        "tags": ["Role dashboards"],
+        "summary": "Employee dashboard data",
+        "operationId": "employeeDashboard",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "X-Active-Role", "in": "header", "required": true, "schema": { "type": "string", "enum": ["EMPLOYEE"] } },
+          { "name": "X-Tenant-Id", "in": "header", "required": false, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DashboardDto" } } } }
+        }
+      }
+    },
+
+    "/api/store/dashboard": {
+      "get": {
+        "tags": ["Role dashboards"],
+        "summary": "Store admin dashboard data",
+        "operationId": "storeDashboard",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "X-Active-Role", "in": "header", "required": true, "schema": { "type": "string", "enum": ["STORE_ADMIN"] } },
+          { "name": "X-Tenant-Id", "in": "header", "required": false, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DashboardDto" } } } }
+        }
+      }
+    },
+
+    "/api/admin/tenants": {
+      "get": {
+        "tags": ["Tenant admin"],
+        "summary": "List tenants you administer",
+        "operationId": "listTenants",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "X-Active-Role", "in": "header", "required": true, "schema": { "type": "string", "enum": ["TENANT_ADMIN"] } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TenantDto" } } } } }
+        }
+      }
+    },
+
+    "/api/admin/tenants/{tenantId}/modules": {
+      "get": {
+        "tags": ["Tenant admin"],
+        "summary": "Enabled modules for a tenant you administer",
+        "operationId": "listModules",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "tenantId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "X-Active-Role", "in": "header", "required": true, "schema": { "type": "string", "enum": ["TENANT_ADMIN"] } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ModuleDto" } } } } }
+        }
+      }
+    },
+
+    "/api/admin/addresses": {
+      "get": {
+        "tags": ["Tenant admin"],
+        "summary": "List addresses in your tenant scope",
+        "operationId": "listAddresses",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "X-Active-Role", "in": "header", "required": true, "schema": { "type": "string", "enum": ["TENANT_ADMIN"] } },
+          { "name": "X-Tenant-Id", "in": "header", "required": false, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AddressDto" } } } } }
+        }
+      }
+    },
+
+    "/api/admin/users": {
+      "get": {
+        "tags": ["Tenant admin"],
+        "summary": "List users in your tenant scope (HR dashboard)",
+        "operationId": "listUsers",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "X-Active-Role", "in": "header", "required": true, "schema": { "type": "string", "enum": ["TENANT_ADMIN"] } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/UserSummaryDto" } } } } }
+        }
+      }
+    },
+
+    "/api/tenant/{tenantId}/modules": {
+      "get": {
+        "tags": ["Tenant"],
+        "summary": "Enabled modules (any tenant member)",
+        "operationId": "tenantModules",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "tenantId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ModuleDto" } } } } }
+        }
+      }
+    },
+    "/api/student/offers": {
+      "get": {
+        "tags": ["Student offers"],
+        "summary": "Shared offers across tenants",
+        "operationId": "studentOffers",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "tenantId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "type", "in": "query", "schema": { "type": "string", "enum": ["BASKET", "STUDIO", "ACTIVITY"] } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/StudentOfferDto" } } } } }
+        }
+      }
+    },
+    "/api/employee/planning": {
+      "get": {
+        "tags": ["Planning"],
+        "summary": "My work schedule (employee)",
+        "operationId": "myPlanning",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PlanningEntryDto" } } } } }
+        }
+      }
+    }
+
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["email", "fullName", "password", "role"],
+        "properties": {
+          "email":    { "type": "string", "format": "email" },
+          "fullName": { "type": "string" },
+          "password": { "type": "string", "minLength": 8 },
+          "role":     { "type": "string", "enum": ["STUDENT","EMPLOYEE","STORE_ADMIN","TENANT_ADMIN"] },
+          "tenantId": { "type": "string", "format": "uuid", "description": "Required for non-STUDENT roles" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email":    { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "OtpRequest": {
+        "type": "object",
+        "required": ["email"],
+        "properties": {
+          "email": { "type": "string", "format": "email" }
+        }
+      },
+      "OtpVerifyRequest": {
+        "type": "object",
+        "required": ["email", "code"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "code":  { "type": "string", "minLength": 6, "maxLength": 6, "pattern": "^[0-9]{6}$" }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token":    { "type": "string" },
+          "email":    { "type": "string" },
+          "fullName": { "type": "string" },
+          "roles":    { "type": "array", "items": { "$ref": "#/components/schemas/RoleClaim" } }
+        }
+      },
+      "RoleClaim": {
+        "type": "object",
+        "properties": {
+          "role":       { "type": "string", "enum": ["STUDENT","EMPLOYEE","STORE_ADMIN","TENANT_ADMIN"] },
+          "tenantId":   { "type": "string", "format": "uuid" },
+          "tenantName": { "type": "string" }
+        }
+      },
+      "DashboardDto": {
+        "type": "object",
+        "properties": {
+          "title":   { "type": "string" },
+          "message": { "type": "string" },
+          "items":   { "type": "array", "items": { "type": "object", "additionalProperties": {} } }
+        }
+      },
+      "TenantDto": {
+        "type": "object",
+        "properties": {
+          "id":         { "type": "string", "format": "uuid" },
+          "name":       { "type": "string" },
+          "schemaName": { "type": "string" }
+        }
+      },
+      "ModuleDto": {
+        "type": "object",
+        "properties": {
+          "id":        { "type": "integer", "format": "int64" },
+          "moduleKey": { "type": "string", "enum": ["PRODUCTS_BASKETS","EMPLOYEE_PLANNING","STUDIOS","ASSOCIATION_CONTENT"] },
+          "enabledAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AddressDto": {
+        "type": "object",
+        "properties": {
+          "id":            { "type": "integer", "format": "int64" },
+          "label":         { "type": "string" },
+          "streetAddress": { "type": "string" },
+          "postalCode":    { "type": "string" },
+          "city":          { "type": "string" },
+          "country":       { "type": "string" },
+          "active":        { "type": "boolean" }
+        }
+      },
+      "UserSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id":       { "type": "integer", "format": "int64" },
+          "email":    { "type": "string" },
+          "fullName": { "type": "string" },
+          "active":   { "type": "boolean" },
+          "roles":    { "type": "array", "items": { "$ref": "#/components/schemas/RoleClaim" } }
+        }
+      },
+      "StudentOfferDto": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["BASKET", "STUDIO", "ACTIVITY"] },
+          "id": { "type": "integer", "format": "int64" },
+          "tenantId": { "type": "string", "format": "uuid" },
+          "tenantName": { "type": "string" },
+          "title": { "type": "string" },
+          "subtitle": { "type": "string" },
+          "price": { "type": "number" },
+          "startsAt": { "type": "string", "format": "date-time" },
+          "endsAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PlanningEntryDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "addressId": { "type": "integer", "format": "int64" },
+          "userId": { "type": "integer", "format": "int64" },
+          "planDate": { "type": "string", "format": "date" },
+          "disponibilityJson": { "type": "string" }
+        }
+      }
+    }
+  }
+}

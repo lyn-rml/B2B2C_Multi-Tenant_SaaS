@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/student_marketplace
+    username: app_rls
+    password: app_rls_dev_change_me
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: public
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+app:
+  jwt:
+    secret: dev-only-change-me-student-marketplace-jwt-secret-key-32chars-min
+    expiration-ms: 86400000
+  otp:
+    ttl-seconds: 600
+    max-attempts: 5
+    from-email: noreply@student-marketplace.local
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

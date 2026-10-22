@@ -1,0 +1,6 @@
+backend/target/
+.idea/
+*.iml
+.env
+.DS_Store
+./docs
