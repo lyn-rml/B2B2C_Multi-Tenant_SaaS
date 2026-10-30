@@ -14,12 +14,12 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@Tag(name = "Planning")
-public class PlanningController {
+@Tag(name = "Employee assignments")
+public class EmployeeAssignmentController {
 
     private final TenantCatalogService tenantCatalogService;
 
-    public PlanningController(TenantCatalogService tenantCatalogService) {
+    public EmployeeAssignmentController(TenantCatalogService tenantCatalogService) {
         this.tenantCatalogService = tenantCatalogService;
     }
 
@@ -45,32 +45,4 @@ public class PlanningController {
         tenantCatalogService.assignEmployee(tenantId, addressId, request);
     }
 
-    @GetMapping("/api/tenant/{tenantId}/addresses/{addressId}/planning")
-    @PreAuthorize("@tenantGuard.canManageAddress(authentication, #tenantId, #addressId)")
-    @Operation(summary = "Planning entries at a store")
-    public List<PlanningEntryDto> listPlanning(
-            @PathVariable UUID tenantId,
-            @PathVariable Long addressId
-    ) {
-        return tenantCatalogService.listPlanningAtAddress(tenantId, addressId);
-    }
-
-    @PostMapping("/api/tenant/{tenantId}/addresses/{addressId}/planning")
-    @PreAuthorize("@tenantGuard.canManageAddress(authentication, #tenantId, #addressId)")
-    @Operation(summary = "Set employee availability for a day")
-    @ResponseStatus(HttpStatus.CREATED)
-    public PlanningEntryDto createPlanning(
-            @PathVariable UUID tenantId,
-            @PathVariable Long addressId,
-            @Valid @RequestBody CreatePlanningRequest request
-    ) {
-        return tenantCatalogService.createPlanning(tenantId, addressId, request);
-    }
-
-    @GetMapping("/api/employee/planning")
-    @PreAuthorize("hasAuthority('EMPLOYEE')")
-    @Operation(summary = "My upcoming work hours")
-    public List<PlanningEntryDto> myPlanning(Authentication authentication) {
-        return tenantCatalogService.listMyPlanning(Long.parseLong(authentication.getName()));
-    }
 }

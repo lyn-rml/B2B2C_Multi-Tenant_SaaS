@@ -14,13 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
-import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -135,12 +131,12 @@ public class TenantCatalogService {
     }
 
     public BasketDto publishBasket(UUID tenantId, Long basketId, PublishRequest request) {
-        ProcessEntity process = processService.findOrCreateByDate(
+        ProcessEntity process = processService.findOrCreateByDate(tenantId,
                 request.publicDate().atStartOfDay().atOffset(ZoneOffset.UTC));
         String schema = schema(tenantId);
         String sql = """
                 UPDATE %s.baskets
-                SET process_id = ?, shared = TRUE, status = 'SHARED'
+                SET process_id = ?, shared = FALSE, status = 'NOT_SHARED'
                 WHERE id = ?
                 RETURNING id, address_id, process_id, title, description, price, status, shared, active
                 """.formatted(schema);
@@ -178,80 +174,6 @@ public class TenantCatalogService {
         jdbcTemplate.update(sql, addressId, request.userId());
     }
 
-    public List<PlanningEntryDto> listPlanningAtAddress(UUID tenantId, Long addressId) {
-        String schema = schema(tenantId);
-        if (!tableExists(schema, "planning")) {
-            return List.of();
-        }
-        String sql = """
-                SELECT pl.id, pl.address_id, pl.user_id, u.email, u.full_name,
-                       pl.plan_date, pl.disponibility::text, pl.active
-                FROM %s.planning pl
-                JOIN public.users u ON u.id = pl.user_id
-                WHERE pl.address_id = ? AND pl.active = TRUE
-                ORDER BY pl.plan_date, u.full_name
-                """.formatted(schema);
-        return jdbcTemplate.query(sql, (rs, rowNum) -> new PlanningEntryDto(
-                rs.getLong("id"),
-                rs.getLong("address_id"),
-                rs.getLong("user_id"),
-                rs.getString("email"),
-                rs.getString("full_name"),
-                rs.getDate("plan_date").toLocalDate(),
-                rs.getString("disponibility"),
-                rs.getBoolean("active")
-        ), addressId);
-    }
-
-    public PlanningEntryDto createPlanning(UUID tenantId, Long addressId, CreatePlanningRequest request) {
-        String schema = schema(tenantId);
-        String sql = """
-                INSERT INTO %s.planning (address_id, user_id, plan_date, disponibility, active)
-                VALUES (?, ?, ?, ?::jsonb, TRUE)
-                RETURNING id, address_id, user_id, plan_date, disponibility::text, active
-                """.formatted(schema);
-        return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
-            Long userId = rs.getLong("user_id");
-            var user = jdbcTemplate.queryForMap("SELECT email, full_name FROM public.users WHERE id = ?", userId);
-            return new PlanningEntryDto(
-                    rs.getLong("id"),
-                    rs.getLong("address_id"),
-                    userId,
-                    (String) user.get("email"),
-                    (String) user.get("full_name"),
-                    rs.getDate("plan_date").toLocalDate(),
-                    rs.getString("disponibility"),
-                    rs.getBoolean("active")
-            );
-        }, addressId, request.userId(), request.planDate(), request.disponibilityJson());
-    }
-
-    public List<PlanningEntryDto> listMyPlanning(Long userId) {
-        UUID tenantId = TenantContextHolder.get().activeTenantId();
-        if (tenantId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tenant context required");
-        }
-        String schema = schema(tenantId);
-        String sql = """
-                SELECT pl.id, pl.address_id, pl.user_id, u.email, u.full_name,
-                       pl.plan_date, pl.disponibility::text, pl.active
-                FROM %s.planning pl
-                JOIN public.users u ON u.id = pl.user_id
-                WHERE pl.user_id = ? AND pl.active = TRUE AND pl.plan_date >= CURRENT_DATE
-                ORDER BY pl.plan_date
-                """.formatted(schema);
-        return jdbcTemplate.query(sql, (rs, rowNum) -> new PlanningEntryDto(
-                rs.getLong("id"),
-                rs.getLong("address_id"),
-                rs.getLong("user_id"),
-                rs.getString("email"),
-                rs.getString("full_name"),
-                rs.getDate("plan_date").toLocalDate(),
-                rs.getString("disponibility"),
-                rs.getBoolean("active")
-        ), userId);
-    }
-
     public List<StudioDto> listStudios(UUID tenantId, Long addressId) {
         String schema = schema(tenantId);
         if (!tableExists(schema, "studios")) {
@@ -276,11 +198,11 @@ public class TenantCatalogService {
     }
 
     public StudioDto publishStudio(UUID tenantId, Long studioId, PublishRequest request) {
-        ProcessEntity process = processService.findOrCreateByDate(
+        ProcessEntity process = processService.findOrCreateByDate(tenantId,
                 request.publicDate().atStartOfDay().atOffset(ZoneOffset.UTC));
         String schema = schema(tenantId);
         String sql = """
-                UPDATE %s.studios SET process_id = ?, shared = TRUE, status = 'SHARED'
+                UPDATE %s.studios SET process_id = ?, shared = FALSE, status = 'NOT_SHARED'
                 WHERE id = ?
                 RETURNING id, address_id, process_id, label, surface_m2, monthly_rent, status, shared, active
                 """.formatted(schema);
@@ -293,8 +215,8 @@ public class TenantCatalogService {
             return List.of();
         }
         String sql = """
-                SELECT id, address_id, process_id, title, description, starts_at, ends_at, status, shared, active
-                FROM %s.activities WHERE address_id = ? AND active = TRUE ORDER BY starts_at
+                SELECT id, address_id, process_id, text, image_path, status, shared, active
+                FROM %s.activities WHERE address_id = ? AND active = TRUE ORDER BY id DESC
                 """.formatted(schema);
         return jdbcTemplate.query(sql, (rs, rowNum) -> mapActivity(rs), addressId);
     }
@@ -303,24 +225,22 @@ public class TenantCatalogService {
         String schema = schema(tenantId);
         String sql = """
                 INSERT INTO %s.activities
-                (address_id, title, description, starts_at, ends_at, status, shared, active)
-                VALUES (?, ?, ?, ?, ?, 'NOT_SHARED', FALSE, TRUE)
-                RETURNING id, address_id, process_id, title, description, starts_at, ends_at, status, shared, active
+                (address_id, text, image_path, status, shared, active)
+                VALUES (?, ?, ?, 'NOT_SHARED', FALSE, TRUE)
+                RETURNING id, address_id, process_id, text, image_path, status, shared, active
                 """.formatted(schema);
         return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> mapActivity(rs),
-                addressId, request.title(), request.description(),
-                Timestamp.from(request.startsAt().toInstant()),
-                Timestamp.from(request.endsAt().toInstant()));
+                addressId, request.text(), request.imagePath());
     }
 
     public ActivityDto publishActivity(UUID tenantId, Long activityId, PublishRequest request) {
-        ProcessEntity process = processService.findOrCreateByDate(
+        ProcessEntity process = processService.findOrCreateByDate(tenantId,
                 request.publicDate().atStartOfDay().atOffset(ZoneOffset.UTC));
         String schema = schema(tenantId);
         String sql = """
-                UPDATE %s.activities SET process_id = ?, shared = TRUE, status = 'SHARED'
+                UPDATE %s.activities SET process_id = ?, shared = FALSE, status = 'NOT_SHARED'
                 WHERE id = ?
-                RETURNING id, address_id, process_id, title, description, starts_at, ends_at, status, shared, active
+                RETURNING id, address_id, process_id, text, image_path, status, shared, active
                 """.formatted(schema);
         return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> mapActivity(rs), process.getId(), activityId);
     }
@@ -335,7 +255,7 @@ public class TenantCatalogService {
             List<TenantModuleEntity> modules = tenantModuleRepository.findByTenant_IdOrderByModuleKeyAsc(tenant.getId());
             boolean hasBaskets = modules.stream().anyMatch(m -> m.getModuleKey() == ModuleKey.PRODUCTS_BASKETS);
             boolean hasStudios = modules.stream().anyMatch(m -> m.getModuleKey() == ModuleKey.STUDIOS);
-            boolean hasActivities = modules.stream().anyMatch(m -> m.getModuleKey() == ModuleKey.ASSOCIATION_CONTENT);
+            boolean hasActivities = modules.stream().anyMatch(m -> m.getModuleKey() == ModuleKey.ACTIVITIES);
 
             if ((typeFilter == null || typeFilter == OfferType.BASKET) && hasBaskets) {
                 offers.addAll(sharedBaskets(tenant));
@@ -403,19 +323,19 @@ public class TenantCatalogService {
             return List.of();
         }
         String sql = """
-                SELECT id, title, description, starts_at, ends_at FROM %s.activities
-                WHERE shared = TRUE AND active = TRUE ORDER BY starts_at
+                SELECT id, text, image_path FROM %s.activities
+                WHERE shared = TRUE AND active = TRUE ORDER BY id DESC
                 """.formatted(schema);
         return jdbcTemplate.query(sql, (rs, rowNum) -> new StudentOfferDto(
                 OfferType.ACTIVITY,
                 rs.getLong("id"),
                 tenant.getId(),
                 tenant.getName(),
-                rs.getString("title"),
-                rs.getString("description"),
                 null,
-                rs.getTimestamp("starts_at").toInstant().atOffset(ZoneOffset.UTC),
-                rs.getTimestamp("ends_at").toInstant().atOffset(ZoneOffset.UTC)
+                null,
+                null,
+                rs.getString("text"),
+                rs.getString("image_path")
         ));
     }
 
@@ -440,11 +360,10 @@ public class TenantCatalogService {
     }
 
     private BasketDto mapBasket(java.sql.ResultSet rs) throws java.sql.SQLException {
-        long processId = rs.getLong("process_id");
         return new BasketDto(
                 rs.getLong("id"),
                 rs.getLong("address_id"),
-                rs.wasNull() ? null : processId,
+                rs.getObject("process_id", Long.class),
                 rs.getString("title"),
                 rs.getString("description"),
                 rs.getBigDecimal("price"),
@@ -455,11 +374,10 @@ public class TenantCatalogService {
     }
 
     private StudioDto mapStudio(java.sql.ResultSet rs) throws java.sql.SQLException {
-        long processId = rs.getLong("process_id");
         return new StudioDto(
                 rs.getLong("id"),
                 rs.getLong("address_id"),
-                rs.wasNull() ? null : processId,
+                rs.getObject("process_id", Long.class),
                 rs.getString("label"),
                 rs.getBigDecimal("surface_m2"),
                 rs.getBigDecimal("monthly_rent"),
@@ -470,20 +388,11 @@ public class TenantCatalogService {
     }
 
     private ActivityDto mapActivity(java.sql.ResultSet rs) throws java.sql.SQLException {
-        long processId = rs.getLong("process_id");
-        Timestamp starts = rs.getTimestamp("starts_at");
-        Timestamp ends = rs.getTimestamp("ends_at");
         return new ActivityDto(
-                rs.getLong("id"),
-                rs.getLong("address_id"),
-                rs.wasNull() ? null : processId,
-                rs.getString("title"),
-                rs.getString("description"),
-                starts != null ? starts.toInstant().atOffset(ZoneOffset.UTC) : null,
-                ends != null ? ends.toInstant().atOffset(ZoneOffset.UTC) : null,
-                rs.getString("status"),
-                rs.getBoolean("shared"),
-                rs.getBoolean("active")
+                rs.getLong("id"), rs.getLong("address_id"),
+                rs.getObject("process_id", Long.class),
+                rs.getString("text"), rs.getString("image_path"),
+                rs.getString("status"), rs.getBoolean("shared"), rs.getBoolean("active")
         );
     }
 }

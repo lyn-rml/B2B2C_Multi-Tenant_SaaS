@@ -93,6 +93,6 @@ public class AdminService {
     }
 
     private TenantDto toTenantDto(TenantEntity tenant) {
-        return new TenantDto(tenant.getId(), tenant.getName(), tenant.getSchemaName(), tenant.getTenantType());
+        return new TenantDto(tenant.getId(), tenant.getName(), tenant.getSchemaName(), tenant.getStatus());
     }
 }

@@ -4,5 +4,6 @@ public enum RoleType {
     STUDENT,
     EMPLOYEE,
     STORE_ADMIN,
+    PLATFORM_ADMIN,
     TENANT_ADMIN
 }

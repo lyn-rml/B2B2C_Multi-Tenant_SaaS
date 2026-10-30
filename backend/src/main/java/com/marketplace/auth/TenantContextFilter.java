@@ -91,7 +91,7 @@ public class TenantContextFilter extends OncePerRequestFilter {
             Set<String> authorities,
             Long userId
     ) {
-        if (activeRole == RoleType.STUDENT) {
+        if (activeRole == RoleType.STUDENT || activeRole == RoleType.PLATFORM_ADMIN) {
             return null;
         }
 
@@ -129,7 +129,8 @@ public class TenantContextFilter extends OncePerRequestFilter {
 
     private boolean requiresTenantContext(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        return uri.startsWith("/api/admin/")
+        return uri.startsWith("/api/platform/")
+                || uri.startsWith("/api/admin/")
                 || uri.startsWith("/api/tenant/")
                 || uri.startsWith("/api/store/")
                 || uri.startsWith("/api/employee/")

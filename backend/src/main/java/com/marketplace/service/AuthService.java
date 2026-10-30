@@ -116,6 +116,9 @@ public class AuthService {
     }
 
     private void validateRoleAndTenant(RoleType role, java.util.UUID tenantId) {
+        if (role != RoleType.STUDENT) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Public registration only grants STUDENT; staff roles require an administrator");
+        }
         if (role == RoleType.STUDENT && tenantId != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "STUDENT role must not have tenantId");
         }

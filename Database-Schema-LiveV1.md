@@ -1,19 +1,25 @@
 # Student Marketplace — Live Database Schema
 
-> Introspected from `student_marketplace` · 2026-10-11  
-> Connection: `postgresql://app_rls@127.0.0.1:5432/student_marketplace`  
-> Schemas covered: **`public`** (shared identity) + **`tenant_*` template** (identical DDL in `tenant_leclerc`, `tenant_entraide`, `tenant_campus`).
+> Target schema revised · 2026-10-30 · based on the 2026-10-11 introspection of `student_marketplace`\
+> Connection: `postgresql://app_rls@127.0.0.1:5432/student_marketplace`\
+> Schemas covered: **`public`** (shared identity, module catalog, publication references and reservations) + **`tenant_*` template** (tables depend on enabled modules).\
+> Documentation of the target architecture; these changes have not been applied to the database.
 
 ---
 
 ## Diagram 1 — `public` schema
 
-Identity, tenancy, roles, and scheduling all live here.  
-`process` is referenced by offers in every tenant schema (no FK from `public` points to it).
+Identity, tenancy, roles, the module catalog, scheduling and reservations all live here.\
+Each `process` belongs to one tenant and can be reused by that tenant’s offers. `published_baskets` gives tenant-local baskets a global UUID for reservations.
 
 ```mermaid
 erDiagram
     tenants ||--o{ tenant_modules : enables
+    modules ||--o{ tenant_modules : assigned_as
+    tenants ||--o{ process : owns
+    tenants ||--o{ published_baskets : publishes
+    users ||--o{ reservations : reserves
+    published_baskets ||--o{ reservations : receives
     tenants ||--o{ tenant_memberships : has_members
     users   ||--o{ tenant_memberships : belongs_to
     users   ||--o{ user_roles : has_role
@@ -24,14 +30,21 @@ erDiagram
         uuid        id          PK
         varchar     name
         varchar     schema_name "UNIQUE — e.g. tenant_leclerc"
-        varchar     tenant_type "SUPERMARKET / ASSOCIATION / RESIDENCE"
+        varchar     status      "DEFAULT PENDING_SETUP"
         timestamptz created_at
+    }
+
+    modules {
+        bigint      id          PK
+        varchar     name
+        varchar     code        UK
+        text        description
     }
 
     tenant_modules {
         bigint      id          PK
         uuid        tenant_id   FK
-        varchar     module_key  "PRODUCTS_BASKETS / EMPLOYEE_PLANNING / STUDIOS / ASSOCIATION_CONTENT"
+        varchar     module_key  FK "modules.code"
         timestamptz enabled_at
     }
 
@@ -54,29 +67,45 @@ erDiagram
     user_roles {
         bigint      id          PK
         bigint      user_id     FK
-        uuid        tenant_id   FK "NULL for STUDENT role"
-        varchar     role        "STUDENT / EMPLOYEE / STORE_ADMIN / TENANT_ADMIN"
+        uuid        tenant_id   FK "NULL for STUDENT / PLATFORM_ADMIN"
+        varchar     role        "STUDENT / EMPLOYEE / STORE_ADMIN / TENANT_ADMIN / PLATFORM_ADMIN"
         timestamptz created_at
     }
 
     process {
         bigint      id             PK
+        uuid        tenant_id      FK
         varchar     name
         timestamptz effective_date "Go-live — flips shared=true on offers"
-        timestamptz end_date       "Auto-deactivate — nullable"
+        timestamptz end_date       "Unpublish — nullable"
         bool        active
         timestamptz created_at
     }
+
+    published_baskets {
+        uuid        id          PK
+        uuid        tenant_id   FK
+        bigint      basket_id   "Tenant-local ID; logical reference"
+    }
+
+    reservations {
+        uuid        id                  PK
+        bigint      student_id          FK "public.users"
+        uuid        published_basket_id FK
+        varchar     status              "PENDING / CONFIRMED / CANCELLED / PICKED_UP"
+        timestamptz reserved_at
+        timestamptz picked_up_at         "nullable"
+    }
 ```
 
-### `has_role` — live constraints on `user_roles`
+### `has_role` — target constraints on `user_roles`
 
 | Constraint | Definition |
 |------------|------------|
-| `user_roles_role_check` | `role IN ('STUDENT','EMPLOYEE','STORE_ADMIN','TENANT_ADMIN')` |
-| `user_roles_tenant_scope_check` | `STUDENT → tenant_id IS NULL`; all others → `tenant_id IS NOT NULL` |
+| `user_roles_role_check` | `role IN ('STUDENT','EMPLOYEE','STORE_ADMIN','TENANT_ADMIN','PLATFORM_ADMIN')` |
+| `user_roles_tenant_scope_check` | `STUDENT / PLATFORM_ADMIN → tenant_id IS NULL`; all others → `tenant_id IS NOT NULL` |
 | `fk_role_membership` | Composite FK `(user_id, tenant_id) → tenant_memberships(user_id, tenant_id)` |
-| `unique_global_student_role` | Partial unique on `(user_id, role) WHERE tenant_id IS NULL` — one STUDENT role per user |
+| `unique_global_role` | Partial unique on `(user_id, role) WHERE tenant_id IS NULL` — one assignment per global role per user |
 | `unique_tenant_admin_per_user` | Partial unique on `(user_id) WHERE role = 'TENANT_ADMIN'` — at most one admin per user |
 | `user_roles_user_id_tenant_id_role_key` | `UNIQUE (user_id, tenant_id, role)` |
 
@@ -84,8 +113,8 @@ erDiagram
 
 ## Diagram 2 — `tenant_*` schema template
 
-`public_users` and `public_process` are cross-schema references (`public.users`, `public.process`).  
-All three tenant schemas share this exact table structure; only seed data differs.
+`public_users` and `public_process` are cross-schema references (`public.users`, `public.process`).\
+Tenant schemas use the same definitions for enabled modules; tables of modules that are not enabled are absent. In the user stories, a “store” is an `addresses` row and `store_admins` maps to `address_admins`.
 
 ```mermaid
 erDiagram
@@ -95,14 +124,14 @@ erDiagram
     public_process |o--o{ baskets       : scheduled_by
     baskets        ||--o{ basket_items  : contains
     product_batches ||--o{ basket_items : allocated_from
-    addresses      ||--o{ planning      : scheduled_at
-    public_users   ||--o{ planning      : staff_shift
     addresses      ||--o{ studios       : contains_unit
-    public_process ||--o{ studios       : go_live_schedule
+    public_process |o--o{ studios       : go_live_schedule
     addresses      ||--o{ activities    : hosts
-    public_process ||--o{ activities    : go_live_schedule
+    public_process |o--o{ activities    : go_live_schedule
     addresses      ||--o{ address_admins : managed_by
     public_users   ||--o{ address_admins : administers
+    addresses      ||--o{ employee_addresses : assigns
+    public_users   ||--o{ employee_addresses : works_at
 
     public_users {
         bigint  id    PK "public.users"
@@ -111,6 +140,7 @@ erDiagram
 
     public_process {
         bigint      id             PK "public.process"
+        uuid        tenant_id      FK "public.tenants"
         varchar     name
         timestamptz effective_date
         timestamptz end_date       "nullable"
@@ -128,6 +158,11 @@ erDiagram
     }
 
     address_admins {
+        bigint address_id FK "PK part 1"
+        bigint user_id    FK "PK part 2 — public.users"
+    }
+
+    employee_addresses {
         bigint address_id FK "PK part 1"
         bigint user_id    FK "PK part 2 — public.users"
     }
@@ -165,19 +200,10 @@ erDiagram
         numeric quantity
     }
 
-    planning {
-        bigint  id           PK
-        bigint  address_id   FK
-        bigint  user_id      FK "public.users employee"
-        date    plan_date
-        jsonb   disponibility "Array of start/end time slots"
-        bool    active
-    }
-
     studios {
         bigint  id           PK
         bigint  address_id   FK
-        bigint  process_id   FK
+        bigint  process_id   FK "nullable"
         varchar label
         numeric surface_m2   "nullable"
         numeric monthly_rent "nullable"
@@ -189,11 +215,9 @@ erDiagram
     activities {
         bigint      id          PK
         bigint      address_id  FK
-        bigint      process_id  FK
-        varchar     title
-        text        description "nullable"
-        timestamptz starts_at
-        timestamptz ends_at
+        text        text
+        varchar     image_path
+        bigint      process_id  FK "nullable"
         varchar     status      "SHARED / NOT_SHARED"
         bool        shared
         bool        active
@@ -204,25 +228,35 @@ erDiagram
 
 Tables are only created in a tenant schema when the matching module is enabled in `public.tenant_modules`:
 
-| Module key | Tables created |
-|------------|----------------|
-| _(always)_ | `addresses`, `address_admins` |
-| `PRODUCTS_BASKETS` | `products`, `product_batches`, `baskets`, `basket_items` |
-| `EMPLOYEE_PLANNING` | `planning` |
-| `STUDIOS` | `studios` |
-| `ASSOCIATION_CONTENT` | `activities` |
+| Module key | Tables created | Publication with `process` |
+|------------|----------------|----------------------------|
+| _(always)_ | `addresses`, `address_admins`, `employee_addresses` | No |
+| `PRODUCTS_BASKETS` | `products`, `product_batches`, `baskets`, `basket_items` | Yes, for baskets |
+| `STUDIOS` | `studios` | Yes |
+| `ACTIVITIES` | `activities` | Yes |
+
+`public.modules` is the catalog; `public.tenant_modules.module_key` references its unique `code`. Registering a module does not implement its tables: activation runs that module’s migrations, creates the tenant schema if needed, and preserves existing data on repeated activation. `public.published_baskets` and `public.reservations` are shared tables, not duplicated per tenant.
 
 ### Offer lifecycle
 
-1. Admin creates a `public.process` row (`effective_date`, `end_date`, `active = true`).
-2. Admin creates the offer (`basket` / `studio` / `activity`) with `process_id`, `shared = false`, `status = 'NOT_SHARED'`, `active = true`.
-3. Scheduled job: `effective_date ≤ now()` → flip `shared = true`, `status = 'SHARED'`; `end_date ≤ now()` → flip `active = false`, `shared = false`.
-4. Student feed: `WHERE shared = true AND active = true`.
+1. An authorized Store Admin or Tenant Admin creates an offer (`basket` / `studio` / `activity`) with `process_id = NULL`, `shared = false`, `status = 'NOT_SHARED'`, `active = true`. A basket has a title, description, fixed price and composition; an activity contains only text and an image path besides its ownership and publication fields.
+2. Admin selects an existing `public.process` of the same tenant or creates one (`tenant_id`, `name`, `effective_date`, optional `end_date`, `active = true`). The same process can schedule multiple offers; editing it requires permission for every affected establishment. No process means no automatic publication.
+3. Scheduled job: publish only when the offer and process are active, `effective_date ≤ now()` and (`end_date IS NULL` or `now() < end_date`). Set `shared = true`, `status = 'SHARED'`. A basket must also contain usable lots from its own establishment with sufficient stock. Upsert its `public.published_baskets` reference using `(tenant_id, basket_id)`; reuse its UUID on repeated runs or republication.
+4. At `end_date`, or if the offer/process becomes inactive (or the basket becomes unavailable), set `shared = false`, `status = 'NOT_SHARED'`. Publication expiry does not change the administrator’s `active` flag. Repeated jobs must be idempotent; never briefly publish an already expired process.
+5. Student feed: require `shared = true AND active = true`, an active process within its publication window, and an enabled module. Basket availability is rechecked against current lots and stock. Students can read qualifying offers across tenants without membership, but cannot edit them. Keep publication references and reservation history after withdrawal; a reference alone does not mean an offer is currently visible.
+
+**Application rules (not enforced by the simple FKs below):**
+
+- Tenant Admins administer all addresses of their tenant. Store Admins only administer addresses assigned through `address_admins`; assignments require membership of that tenant and the `STORE_ADMIN` role. The `EMPLOYEE` role remains available, without a dedicated business module.
+- Every offer’s process must belong to the tenant owning its schema. Reject cross-tenant process selection and unauthorized changes to a reused process. The FK on `process_id` alone does not enforce tenant ownership.
+- Products and basket lots must belong to the selected establishment. Reject negative batch quantities, non-positive basket item quantities and expired (`expiry_date < CURRENT_DATE`), inactive or insufficient lots. A product remains available while at least one active, unexpired lot has stock. Require a fixed, non-negative price when creating a basket; the existing nullable column remains for legacy records.
+- A reservation requires the global `STUDENT` role. Resolve its publication reference through the registered tenant schema, check that the basket is currently published and available, then create the reservation and engage all required lot quantities in one transaction. Serialize concurrent reservations against the same lots, including lots shared by different baskets, so stock cannot be oversold. The SQL implementation uses `app.reserve_basket(uuid)` to lock the basket and its lots, recheck availability, decrement stock and create the reservation atomically. Direct application writes to `reservations` are not granted.
+- Students can read only their own reservations. Store Admins can read reservations for their assigned addresses, and Tenant Admins for their own tenant. Resolve the establishment via the publication reference and source basket; do not grant staff access merely because the reservation is in `public`.
 
 ---
 
 <details>
-<summary><strong>Full column &amp; constraint reference (introspected 2026-10-11)</strong></summary>
+<summary><strong>Full column &amp; constraint reference (target revised 2026-10-30)</strong></summary>
 
 ### `public` schema
 
@@ -234,12 +268,34 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `name` | varchar | NOT NULL |
 | `schema_name` | varchar | NOT NULL |
 | `created_at` | timestamptz | NOT NULL |
-| `tenant_type` | varchar | nullable |
+| `status` | varchar | NOT NULL |
 
 **Constraints:**
+
 - `PK` `tenants_pkey` — `(id)`
 - `UNIQUE` `tenants_schema_name_key` — `(schema_name)`
-- `CHECK` `tenants_tenant_type_check` — `tenant_type IN ('SUPERMARKET','ASSOCIATION','RESIDENCE')`
+
+**Defaults:**
+
+- `status = 'PENDING_SETUP'` on creation. Further onboarding states and transitions are not specified by the supplied stories.
+
+---
+
+#### `public.modules`
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| `id` | bigint | NOT NULL |
+| `name` | varchar | NOT NULL |
+| `code` | varchar | NOT NULL |
+| `description` | text | NOT NULL |
+
+**Constraints:**
+
+- `PK` `modules_pkey` — `(id)`
+- `UNIQUE` `modules_code_key` — `(code)`
+
+**Initial catalog:** `PRODUCTS_BASKETS`, `STUDIOS`, `ACTIVITIES`. Platform Admins manage this catalog and module assignments; codes are not a fixed CHECK enumeration.
 
 ---
 
@@ -253,10 +309,11 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `enabled_at` | timestamptz | NOT NULL |
 
 **Constraints:**
+
 - `PK` `tenant_modules_pkey` — `(id)`
 - `UNIQUE` `tenant_modules_tenant_id_module_key_key` — `(tenant_id, module_key)`
 - `FK` `tenant_modules_tenant_id_fkey` — `tenant_id → public.tenants(id) ON DELETE CASCADE`
-- `CHECK` `tenant_modules_module_key_check` — `module_key IN ('PRODUCTS_BASKETS','EMPLOYEE_PLANNING','STUDIOS','ASSOCIATION_CONTENT')`
+- `FK` `tenant_modules_module_key_fkey` — `module_key → public.modules(code)`
 
 ---
 
@@ -272,6 +329,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `created_at` | timestamptz | NOT NULL |
 
 **Constraints:**
+
 - `PK` `users_pkey` — `(id)`
 - `UNIQUE` `users_email_key` — `(email)`
 
@@ -287,6 +345,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `created_at` | timestamptz | NOT NULL |
 
 **Constraints:**
+
 - `PK` `tenant_memberships_pkey` — `(id)`
 - `UNIQUE` `tenant_memberships_user_id_tenant_id_key` — `(user_id, tenant_id)`
 - `FK` `tenant_memberships_user_id_fkey` — `user_id → public.users(id) ON DELETE CASCADE`
@@ -305,16 +364,18 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `created_at` | timestamptz | NOT NULL |
 
 **Constraints:**
+
 - `PK` `user_roles_pkey` — `(id)`
 - `UNIQUE` `user_roles_user_id_tenant_id_role_key` — `(user_id, tenant_id, role)`
 - `FK` `user_roles_user_id_fkey` — `user_id → public.users(id) ON DELETE CASCADE`
 - `FK` `user_roles_tenant_id_fkey` — `tenant_id → public.tenants(id) ON DELETE CASCADE`
 - `FK` `fk_role_membership` — `(user_id, tenant_id) → public.tenant_memberships(user_id, tenant_id)`
-- `CHECK` `user_roles_role_check` — `role IN ('STUDENT','EMPLOYEE','STORE_ADMIN','TENANT_ADMIN')`
-- `CHECK` `user_roles_tenant_scope_check` — `(role='STUDENT' AND tenant_id IS NULL) OR (role<>'STUDENT' AND tenant_id IS NOT NULL)`
+- `CHECK` `user_roles_role_check` — `role IN ('STUDENT','EMPLOYEE','STORE_ADMIN','TENANT_ADMIN','PLATFORM_ADMIN')`
+- `CHECK` `user_roles_tenant_scope_check` — `(role IN ('STUDENT','PLATFORM_ADMIN') AND tenant_id IS NULL) OR (role IN ('EMPLOYEE','STORE_ADMIN','TENANT_ADMIN') AND tenant_id IS NOT NULL)`
 
 **Partial indexes:**
-- `unique_global_student_role` — `UNIQUE (user_id, role) WHERE tenant_id IS NULL`
+
+- `unique_global_role` — `UNIQUE (user_id, role) WHERE tenant_id IS NULL`
 - `unique_tenant_admin_per_user` — `UNIQUE (user_id) WHERE role = 'TENANT_ADMIN'`
 
 ---
@@ -324,6 +385,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | Column | Type | Nullable |
 |--------|------|----------|
 | `id` | bigint | NOT NULL |
+| `tenant_id` | uuid | NOT NULL |
 | `name` | varchar | NOT NULL |
 | `effective_date` | timestamptz | NOT NULL |
 | `end_date` | timestamptz | nullable |
@@ -331,13 +393,69 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `created_at` | timestamptz | NOT NULL |
 
 **Constraints:**
+
 - `PK` `process_pkey` — `(id)`
+- `FK` `process_tenant_id_fkey` — `tenant_id → public.tenants(id)`
+- `CHECK` `process_dates_check` — `end_date IS NULL OR end_date > effective_date`
+
+---
+
+#### `public.published_baskets`
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| `id` | uuid | NOT NULL |
+| `tenant_id` | uuid | NOT NULL |
+| `basket_id` | bigint | NOT NULL |
+
+**Constraints:**
+
+- `PK` `published_baskets_pkey` — `(id)`
+- `UNIQUE` `published_baskets_tenant_id_basket_id_key` — `(tenant_id, basket_id)`
+- `FK` `published_baskets_tenant_id_fkey` — `tenant_id → public.tenants(id) ON DELETE RESTRICT`
+
+**Reference and retention rules:**
+
+- `basket_id` logically identifies `baskets(id)` in the schema registered by `tenant_id`. It is not a PostgreSQL FK: the destination schema varies by row. The publication trigger creates this reference from the source basket and its tenant; direct application writes are not granted.
+- This is a stable publication identity, not an offer snapshot or a stock counter. Preserve the reference and source basket/address after unpublishing; the SQL deletion guard rejects deletion of a referenced basket, and direct module removal is not granted to the application role. Preserve composition while stock is engaged, or implement an allocation history before allowing edits that would invalidate reservations.
+- Actual availability comes from the source basket, its process, module and lots. Do not list all rows of this table as available offers.
+
+---
+
+#### `public.reservations`
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| `id` | uuid | NOT NULL |
+| `student_id` | bigint | NOT NULL |
+| `published_basket_id` | uuid | NOT NULL |
+| `status` | varchar | NOT NULL |
+| `reserved_at` | timestamptz | NOT NULL |
+| `picked_up_at` | timestamptz | nullable |
+
+**Constraints:**
+
+- `PK` `reservations_pkey` — `(id)`
+- `FK` `reservations_student_id_fkey` — `student_id → public.users(id) ON DELETE RESTRICT`
+- `FK` `reservations_published_basket_id_fkey` — `published_basket_id → public.published_baskets(id) ON DELETE RESTRICT`
+- `CHECK` `reservations_status_check` — `status IN ('PENDING','CONFIRMED','CANCELLED','PICKED_UP')`
+
+**Defaults and semantics:**
+
+- `status = 'PENDING'`, `reserved_at = now()`, `picked_up_at = NULL` when a reservation is created. One row reserves one basket; there is no reservation quantity column.
+- `picked_up_at` records the actual collection time. Proposed confirmation, cancellation and pickup scenarios are listed separately in [User-Stories-LiveV1.md](User-Stories-LiveV1.md); those transition rules are not enforced by the status CHECK.
+- The user FK establishes identity only. Student eligibility, ownership, staff permissions and atomic stock engagement follow the application rules above.
+
+**Indexes:**
+
+- `reservations_student_id_idx` — `(student_id)`
+- `reservations_published_basket_id_idx` — `(published_basket_id)`
 
 ---
 
 ### `tenant_*` schemas
 
-> The DDL below describes `tenant_leclerc`. `tenant_entraide` and `tenant_campus` have the same structure; only the enabled modules (and thus which tables exist) differ per tenant.
+> The definitions below describe the target `tenant_*` template. Each tenant receives the common tables plus the tables for its enabled modules. `addresses.label` is the store name; `address_admins` supports multiple admins per store and multiple stores per admin.
 
 #### `tenant_*.addresses`
 
@@ -352,6 +470,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `active` | bool | NOT NULL |
 
 **Constraints:**
+
 - `PK` `addresses_pkey` — `(id)`
 
 ---
@@ -364,9 +483,27 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `user_id` | bigint | NOT NULL |
 
 **Constraints:**
+
 - `PK` `address_admins_pkey` — `(address_id, user_id)`
 - `FK` `address_admins_address_id_fkey` — `address_id → tenant_*.addresses(id) ON DELETE CASCADE`
 - `FK` `address_admins_user_id_fkey` — `user_id → public.users(id) ON DELETE CASCADE`
+
+---
+
+#### `tenant_*.employee_addresses`
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| `address_id` | bigint | NOT NULL |
+| `user_id` | bigint | NOT NULL |
+
+**Constraints:**
+
+- `PK` `employee_addresses_pkey` — `(address_id, user_id)`
+- `FK` `employee_addresses_address_id_fkey` — `address_id → tenant_*.addresses(id) ON DELETE CASCADE`
+- `FK` `employee_addresses_user_id_fkey` — `user_id → public.users(id) ON DELETE CASCADE`
+
+**Assignment rule:** The user must hold the tenant's `EMPLOYEE` role. This common table preserves employee-to-store assignments independently of any scheduling feature.
 
 ---
 
@@ -380,6 +517,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `active` | bool | NOT NULL |
 
 **Constraints:**
+
 - `PK` `products_pkey` — `(id)`
 - `FK` `products_address_id_fkey` — `address_id → tenant_*.addresses(id)`
 
@@ -396,10 +534,13 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `active` | bool | NOT NULL |
 
 **Constraints:**
+
 - `PK` `product_batches_pkey` — `(id)`
 - `FK` `product_batches_product_id_fkey` — `product_id → tenant_*.products(id)`
+- `CHECK` `product_batches_quantity_check` — `quantity >= 0`
 
 **Indexes:**
+
 - `product_batches_product_expiry_*` — `(product_id, expiry_date)`
 
 ---
@@ -419,12 +560,15 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `active` | bool | NOT NULL |
 
 **Constraints:**
+
 - `PK` `baskets_pkey` — `(id)`
 - `FK` `baskets_address_id_fkey` — `address_id → tenant_*.addresses(id)`
 - `FK` `baskets_process_id_fkey` — `process_id → public.process(id)`
 - `CHECK` `baskets_status_check` — `status IN ('SHARED','NOT_SHARED')`
+- `CHECK` `baskets_price_check` — `price >= 0` (NULL allowed for legacy records)
 
 **Indexes:**
+
 - `baskets_shared_active_*` — `(shared, active)` — student feed filter
 
 ---
@@ -438,27 +582,11 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `quantity` | numeric | NOT NULL |
 
 **Constraints:**
+
 - `PK` `basket_items_pkey` — `(basket_id, product_batch_id)`
 - `FK` `basket_items_basket_id_fkey` — `basket_id → tenant_*.baskets(id) ON DELETE CASCADE`
 - `FK` `basket_items_product_batch_id_fkey` — `product_batch_id → tenant_*.product_batches(id)`
-
----
-
-#### `tenant_*.planning` _(module: EMPLOYEE\_PLANNING)_
-
-| Column | Type | Nullable |
-|--------|------|----------|
-| `id` | bigint | NOT NULL |
-| `address_id` | bigint | NOT NULL |
-| `user_id` | bigint | NOT NULL |
-| `plan_date` | date | NOT NULL |
-| `disponibility` | jsonb | NOT NULL |
-| `active` | bool | NOT NULL |
-
-**Constraints:**
-- `PK` `planning_pkey` — `(id)`
-- `FK` `planning_address_id_fkey` — `address_id → tenant_*.addresses(id)`
-- `FK` `planning_user_id_fkey` — `user_id → public.users(id)`
+- `CHECK` `basket_items_quantity_check` — `quantity > 0`
 
 ---
 
@@ -468,7 +596,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 |--------|------|----------|
 | `id` | bigint | NOT NULL |
 | `address_id` | bigint | NOT NULL |
-| `process_id` | bigint | NOT NULL |
+| `process_id` | bigint | nullable |
 | `label` | varchar | NOT NULL |
 | `surface_m2` | numeric | nullable |
 | `monthly_rent` | numeric | nullable |
@@ -477,6 +605,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 | `active` | bool | NOT NULL |
 
 **Constraints:**
+
 - `PK` `studios_pkey` — `(id)`
 - `FK` `studios_address_id_fkey` — `address_id → tenant_*.addresses(id) ON DELETE CASCADE`
 - `FK` `studios_process_id_fkey` — `process_id → public.process(id)`
@@ -484,22 +613,21 @@ Tables are only created in a tenant schema when the matching module is enabled i
 
 ---
 
-#### `tenant_*.activities` _(module: ASSOCIATION\_CONTENT)_
+#### `tenant_*.activities` _(module: ACTIVITIES)_
 
 | Column | Type | Nullable |
 |--------|------|----------|
 | `id` | bigint | NOT NULL |
 | `address_id` | bigint | NOT NULL |
-| `process_id` | bigint | NOT NULL |
-| `title` | varchar | NOT NULL |
-| `description` | text | nullable |
-| `starts_at` | timestamptz | NOT NULL |
-| `ends_at` | timestamptz | NOT NULL |
+| `text` | text | NOT NULL |
+| `image_path` | varchar | NOT NULL |
+| `process_id` | bigint | nullable |
 | `status` | varchar | NOT NULL |
 | `shared` | bool | NOT NULL |
 | `active` | bool | NOT NULL |
 
 **Constraints:**
+
 - `PK` `activities_pkey` — `(id)`
 - `FK` `activities_address_id_fkey` — `address_id → tenant_*.addresses(id) ON DELETE CASCADE`
 - `FK` `activities_process_id_fkey` — `process_id → public.process(id)`

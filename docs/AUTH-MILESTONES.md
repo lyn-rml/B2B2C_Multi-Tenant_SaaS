@@ -23,4 +23,4 @@ Staff tenant APIs expect:
 
 Student routes under `/api/student/**` force active role `STUDENT`.
 
-Datasource uses PostgreSQL role `app_rls` (see `scripts/v2/02_rls_role.sql`).
+Datasource uses PostgreSQL role `app_rls`. See the root README for the empty-schema installation, explicit first Platform Admin bootstrap, and database checks. Public registration grants only `STUDENT`.

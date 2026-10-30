@@ -1,7 +1,6 @@
 package com.marketplace.web.dto;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record StudentOfferDto(
@@ -12,7 +11,7 @@ public record StudentOfferDto(
         String title,
         String subtitle,
         BigDecimal price,
-        OffsetDateTime startsAt,
-        OffsetDateTime endsAt
+        String text,
+        String imagePath
 ) {
 }

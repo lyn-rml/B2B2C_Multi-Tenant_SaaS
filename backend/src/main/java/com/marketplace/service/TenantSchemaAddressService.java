@@ -90,6 +90,10 @@ public class TenantSchemaAddressService {
     }
 
     public List<java.util.Map<String, Object>> listSharedBasketsInSchema(TenantEntity tenant) {
+        if (jdbcTemplate.queryForObject("SELECT to_regclass(?) IS NOT NULL", Boolean.class,
+                tenant.getSchemaName() + ".baskets") != Boolean.TRUE) {
+            return List.of();
+        }
         validateSchemaName(tenant.getSchemaName());
         String sql = """
                 SELECT id, title, shared, active

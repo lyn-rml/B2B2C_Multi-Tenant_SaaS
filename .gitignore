@@ -4,3 +4,8 @@ backend/target/
 .env
 .DS_Store
 ./docs
+
+# Private database backups
+*.dump
+*.dump.sha256
+__pycache__/

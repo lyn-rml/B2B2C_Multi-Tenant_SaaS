@@ -7,14 +7,17 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface ProcessRepository extends JpaRepository<ProcessEntity, Long> {
 
-    @Query("""
-            SELECT p FROM ProcessEntity p
-            WHERE p.effectiveDate >= :dayStart AND p.effectiveDate < :dayEnd
-            """)
+    @Query(value = """
+            SELECT * FROM public.process
+            WHERE tenant_id = :tenantId AND effective_date >= :dayStart AND effective_date < :dayEnd
+            ORDER BY id LIMIT 1
+            """, nativeQuery = true)
     Optional<ProcessEntity> findByEffectiveDateOnDay(
+            @Param("tenantId") UUID tenantId,
             @Param("dayStart") OffsetDateTime dayStart,
             @Param("dayEnd") OffsetDateTime dayEnd
     );

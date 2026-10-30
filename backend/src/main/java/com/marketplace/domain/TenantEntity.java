@@ -23,9 +23,8 @@ public class TenantEntity {
     @Column(name = "schema_name", nullable = false, unique = true, length = 63)
     private String schemaName;
 
-    @Column(name = "tenant_type", nullable = false, length = 30)
-    @Enumerated(EnumType.STRING)
-    private TenantType tenantType = TenantType.SUPERMARKET;
+    @Column(nullable = false, length = 40)
+    private String status = "PENDING_SETUP";
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;

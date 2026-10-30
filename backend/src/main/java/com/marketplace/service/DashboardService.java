@@ -48,10 +48,8 @@ public class DashboardService {
     public DashboardDto employeeDashboard(Long userId) {
         return new DashboardDto(
                 "Employee workspace",
-                "Your shifts and store tasks for today.",
+                "Your employee account.",
                 List.of(
-                        Map.of("label", "Assigned store", "value", "Leclerc Brest"),
-                        Map.of("label", "Open tasks", "value", 3),
                         Map.of("userId", userId)
                 )
         );
