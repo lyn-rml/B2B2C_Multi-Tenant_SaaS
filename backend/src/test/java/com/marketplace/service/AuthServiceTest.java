@@ -21,8 +21,7 @@ class AuthServiceTest {
     void publicRegistrationCannotGrantPrivilegedRoles(RoleType role) {
         var users = mock(UserRepository.class);
         var roles = mock(UserRoleRepository.class);
-        var service = new AuthService(users, mock(TenantRepository.class),
-                mock(TenantMembershipRepository.class), roles, mock(PasswordEncoder.class), mock(JwtService.class));
+        var service = new AuthService(users, roles, mock(PasswordEncoder.class), mock(JwtService.class));
         var request = new RegisterRequest("person@example.test", "A person", "unused-password", role, UUID.randomUUID());
         var error = assertThrows(ResponseStatusException.class, () -> service.register(request));
         assertEquals(HttpStatus.FORBIDDEN, error.getStatusCode());

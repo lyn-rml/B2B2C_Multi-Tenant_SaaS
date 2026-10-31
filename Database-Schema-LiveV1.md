@@ -3,7 +3,7 @@
 > Target schema revised · 2026-10-30 · based on the 2026-10-11 introspection of `student_marketplace`\
 > Connection: `postgresql://app_rls@127.0.0.1:5432/student_marketplace`\
 > Schemas covered: **`public`** (shared identity, module catalog, publication references and reservations) + **`tenant_*` template** (tables depend on enabled modules).\
-> Documentation of the target architecture; these changes have not been applied to the database.
+> Target architecture. [script.sql](docs/script.sql) installs only the public table structure and includes commented tenant/module templates; the lifecycle and access rules below remain specifications.
 
 ---
 
@@ -250,7 +250,7 @@ Tables are only created in a tenant schema when the matching module is enabled i
 - Tenant Admins administer all addresses of their tenant. Store Admins only administer addresses assigned through `address_admins`; assignments require membership of that tenant and the `STORE_ADMIN` role. The `EMPLOYEE` role remains available, without a dedicated business module.
 - Every offer’s process must belong to the tenant owning its schema. Reject cross-tenant process selection and unauthorized changes to a reused process. The FK on `process_id` alone does not enforce tenant ownership.
 - Products and basket lots must belong to the selected establishment. Reject negative batch quantities, non-positive basket item quantities and expired (`expiry_date < CURRENT_DATE`), inactive or insufficient lots. A product remains available while at least one active, unexpired lot has stock. Require a fixed, non-negative price when creating a basket; the existing nullable column remains for legacy records.
-- A reservation requires the global `STUDENT` role. Resolve its publication reference through the registered tenant schema, check that the basket is currently published and available, then create the reservation and engage all required lot quantities in one transaction. Serialize concurrent reservations against the same lots, including lots shared by different baskets, so stock cannot be oversold. The SQL implementation uses `app.reserve_basket(uuid)` to lock the basket and its lots, recheck availability, decrement stock and create the reservation atomically. Direct application writes to `reservations` are not granted.
+- A reservation requires the global `STUDENT` role. Resolve its publication reference through the registered tenant schema, check that the basket is currently published and available, then create the reservation and engage all required lot quantities in one transaction. Serialize concurrent reservations against the same lots, including lots shared by different baskets, so stock cannot be oversold. This transaction and its access controls remain to be implemented; the structure-only script provides the tables and constraints.
 - Students can read only their own reservations. Store Admins can read reservations for their assigned addresses, and Tenant Admins for their own tenant. Resolve the establishment via the publication reference and source basket; do not grant staff access merely because the reservation is in `public`.
 
 ---
@@ -416,8 +416,8 @@ Tables are only created in a tenant schema when the matching module is enabled i
 
 **Reference and retention rules:**
 
-- `basket_id` logically identifies `baskets(id)` in the schema registered by `tenant_id`. It is not a PostgreSQL FK: the destination schema varies by row. The publication trigger creates this reference from the source basket and its tenant; direct application writes are not granted.
-- This is a stable publication identity, not an offer snapshot or a stock counter. Preserve the reference and source basket/address after unpublishing; the SQL deletion guard rejects deletion of a referenced basket, and direct module removal is not granted to the application role. Preserve composition while stock is engaged, or implement an allocation history before allowing edits that would invalidate reservations.
+- `basket_id` logically identifies `baskets(id)` in the schema registered by `tenant_id`. It is not a PostgreSQL FK: the destination schema varies by row. The publication workflow must validate the source basket and tenant when creating this reference; it is not installed by the structure-only script.
+- This is a stable publication identity, not an offer snapshot or a stock counter. Preserve the reference and source basket/address after unpublishing; future deletion and module-removal workflows must prevent removal of source records required by reservation history. Preserve composition while stock is engaged, or implement an allocation history before allowing edits that would invalidate reservations.
 - Actual availability comes from the source basket, its process, module and lots. Do not list all rows of this table as available offers.
 
 ---

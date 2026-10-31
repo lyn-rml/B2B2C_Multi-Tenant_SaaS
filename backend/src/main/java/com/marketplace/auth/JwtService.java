@@ -1,6 +1,5 @@
 package com.marketplace.auth;
 
-import com.marketplace.domain.RoleType;
 import com.marketplace.domain.UserEntity;
 import com.marketplace.domain.UserRoleEntity;
 import io.jsonwebtoken.Claims;
@@ -54,19 +53,6 @@ public class JwtService {
         return Long.parseLong(claims.getSubject());
     }
 
-    public List<String> getRoleAuthorities(Claims claims) {
-        Object raw = claims.get("roles");
-        if (raw instanceof List<?> list) {
-            return list.stream().map(Object::toString).map(this::roleFromClaim).distinct().toList();
-        }
-        return List.of();
-    }
-
-    private String roleFromClaim(String claim) {
-        int idx = claim.indexOf(':');
-        return idx > 0 ? claim.substring(0, idx) : claim;
-    }
-
     private RoleClaim toClaim(UserRoleEntity entity) {
         if (entity.getTenant() == null) {
             return new RoleClaim(entity.getRole(), null, null);
@@ -89,7 +75,4 @@ public class JwtService {
                 .toList();
     }
 
-    public static List<RoleType> distinctRoleTypes(UserEntity user) {
-        return user.getRoles().stream().map(UserRoleEntity::getRole).distinct().toList();
-    }
 }

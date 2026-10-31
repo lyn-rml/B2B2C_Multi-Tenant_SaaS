@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
+@io.swagger.v3.oas.annotations.security.SecurityRequirements
 @RestController
 @RequestMapping("/api/health")
 @Tag(name = "Health")

@@ -37,8 +37,8 @@ public class OtpService {
     }
 
     public void requestCode(String email) {
-        String normalized = email.toLowerCase();
-        userRepository.findByEmail(normalized)
+        String normalized = AuthService.normalizeEmail(email);
+        userRepository.findByEmailIgnoreCase(normalized)
                 .filter(UserEntity::isActive)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
@@ -49,7 +49,7 @@ public class OtpService {
     }
 
     public AuthResponse verifyCode(String email, String code) {
-        String normalized = email.toLowerCase();
+        String normalized = AuthService.normalizeEmail(email);
         OtpEntry entry = codes.get(normalized);
         if (entry == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired code");

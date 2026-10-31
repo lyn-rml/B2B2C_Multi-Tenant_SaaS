@@ -1,6 +1,9 @@
 package com.marketplace.auth;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import com.marketplace.repository.UserRepository;
+import com.marketplace.domain.UserEntity;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,9 +22,11 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final UserRepository users;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    public JwtAuthenticationFilter(JwtService jwtService, UserRepository users) {
         this.jwtService = jwtService;
+        this.users = users;
     }
 
     @Override
@@ -39,9 +44,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = header.substring(7);
         try {
             Claims claims = jwtService.parseClaims(token);
-            List<SimpleGrantedAuthority> authorities = jwtService.getRoleAuthorities(claims)
-                    .stream()
-                    .map(SimpleGrantedAuthority::new)
+            UserEntity user = users.findWithRolesById(jwtService.getUserId(claims))
+                    .filter(UserEntity::isActive).orElseThrow(() -> new JwtException("Inactive or missing user"));
+            List<SimpleGrantedAuthority> authorities = user.getRoles().stream()
+                    .map(role -> new SimpleGrantedAuthority(role.getRole().name())).distinct()
                     .toList();
 
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
@@ -50,7 +56,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authorities
             );
             SecurityContextHolder.getContext().setAuthentication(authentication);
-        } catch (Exception ignored) {
+        } catch (JwtException | IllegalArgumentException ignored) {
             SecurityContextHolder.clearContext();
         }
 

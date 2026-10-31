@@ -19,7 +19,9 @@
 --   PRODUCTS_BASKETS : products, product_batches, baskets, basket_items
 --   STUDIOS          : studios
 --   ACTIVITIES       : activities
--- Les codes du catalogue public.modules seront renseignés manuellement.
+-- Le catalogue public.modules est renseigné via l’API Platform Admin.
+-- L’API d’attribution provisionne les schémas via ses migrations versionnées ;
+-- les modèles ci-dessous restent une référence, sans exécution automatique.
 -- ============================================================================
 
 -- ============================================================================
@@ -276,5 +278,5 @@ END ACTIVITIES */
 -- Portée : structure uniquement.
 -- La publication programmée, l'engagement du stock, les transitions de réservation
 -- et les contrôles d'appartenance des processus/lots seront implémentés séparément.
--- Ce script ne fournit pas les fonctions app.* utilisées par le backend complet.
+-- Le backend actuel expose l’authentification et US-000/US-001 sans fonctions app.*.
 -- ============================================================================

@@ -1,8 +1,3 @@
 package com.marketplace.web.dto;
 
-import com.marketplace.domain.ModuleKey;
-
-import java.time.OffsetDateTime;
-
-public record ModuleDto(ModuleKey moduleKey, OffsetDateTime enabledAt) {
-}
+public record ModuleDto(Long id, String name, String code, String description, boolean provisioningSupported) {}

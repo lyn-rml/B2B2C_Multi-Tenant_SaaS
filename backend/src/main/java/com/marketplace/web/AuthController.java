@@ -26,12 +26,14 @@ public class AuthController {
         this.otpService = otpService;
     }
 
+    @io.swagger.v3.oas.annotations.security.SecurityRequirements
     @PostMapping("/register")
     @Operation(summary = "Register a new user")
     public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
         return authService.register(request);
     }
 
+    @io.swagger.v3.oas.annotations.security.SecurityRequirements
     @PostMapping("/login")
     @Operation(summary = "Login with email and password")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
@@ -44,12 +46,14 @@ public class AuthController {
         return authService.me(Long.parseLong(authentication.getName()));
     }
 
+    @io.swagger.v3.oas.annotations.security.SecurityRequirements
     @PostMapping("/otp/request")
     @Operation(summary = "Request a one-time login code by email")
     public void requestOtp(@Valid @RequestBody OtpRequest request) {
         otpService.requestCode(request.email());
     }
 
+    @io.swagger.v3.oas.annotations.security.SecurityRequirements
     @PostMapping("/otp/verify")
     @Operation(summary = "Verify email OTP and receive JWT")
     public AuthResponse verifyOtp(@Valid @RequestBody OtpVerifyRequest request) {

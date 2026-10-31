@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/student_marketplace
+    url: jdbc:postgresql://127.0.0.1:5432/B2B_Market
     username: app_rls
     password: app_rls_dev_change_me
   jpa:
