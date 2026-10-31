@@ -1,11 +1,6 @@
 # Student Marketplace — Live Database Schema
 
-> Target schema revised · 2026-10-30 · based on the 2026-10-11 introspection of `student_marketplace`\
-> Connection: `postgresql://app_rls@127.0.0.1:5432/student_marketplace`\
-> Schemas covered: **`public`** (shared identity, module catalog, publication references and reservations) + **`tenant_*` template** (tables depend on enabled modules).\
-> Target architecture. [script.sql](docs/script.sql) installs only the public table structure and includes commented tenant/module templates; the lifecycle and access rules below remain specifications.
 
----
 
 ## Diagram 1 — `public` schema
 

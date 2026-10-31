@@ -1,12 +1,5 @@
 # Student Marketplace — User stories et scénarios E2E
 
-> Source : `Untitled spreadsheet - Sheet1.csv` · 18 user stories (`US-000` à `US-017`).\
-> Alignement documentaire · 2026-10-30 · [Schéma cible](Database-Schema-LiveV1.md).\
-> Les scénarios décrivent les comportements attendus ; ils ne constituent pas des tests exécutés.
-
----
-
-Les six colonnes du CSV et les identifiants d'origine sont conservés. « Store » ou « établissement » correspond à `tenant_*.addresses` ; son nom est `label`. La table appelée `store_admins` dans le CSV est nommée `tenant_*.address_admins` dans le schéma. Une activité utilise `text` et `image_path`. Une réservation utilise `student_id` et `published_basket_id`, avec une référence publique stable vers le panier du tenant.
 
 ## User stories issues du CSV
 
